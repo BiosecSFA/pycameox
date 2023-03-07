@@ -14,7 +14,7 @@ This work is supported by the U.S. Department of Energy, Office of Science, Offi
 
 ___
 
-If you use CAMEOX in your research, please cite the following papers. Thanks!
+If you use pyCAMEOX in your research, please cite the following papers. Thanks!
 
 Allen JE, _et al._ **GENTANGLE: integrated computational design of gene entanglements**. _In preparation_. 2022. 
 
