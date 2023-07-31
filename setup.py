@@ -6,18 +6,18 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name='pycameox',
-    version='0.0.3',
+    version='0.1.0',
     author='Jose Manuel Martí',
     author_email='martimartine1@llnl.gov',
     description='Python library for CAMEOX (CAMEOs eXtended)',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/BiosecSFA/CAMEOX',
+    url='https://github.com/BiosecSFA/pycameox',
     project_urls={
-        'Bug Tracker': 'https://github.com/BiosecSFA/CAMEOX/issues',
+        'Bug Tracker': 'https://github.com/BiosecSFA/pycameox/issues',
         },
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 3 - Alpha',
         'Framework :: IPython',
         'Framework :: Jupyter',
         'Intended Audience :: Science/Research',
@@ -34,6 +34,7 @@ setuptools.setup(
     packages=setuptools.find_packages(where="src"),
     python_requires=">=3.8",
     install_requires=[
+        'evcouplings'
         'matplotlib',
         'numpy',
         'pandas',
