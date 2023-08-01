@@ -18,13 +18,13 @@ import plotly.offline as py
 import scipy
 
 
-# ### General methods
-# #### Get ~ratio
+# ## General functions
+# ### Get ~ratio
 def get_ratio(seqA, seqB):
     return difflib.SequenceMatcher(None, seqA, seqB, autojunk=False).ratio()
 
 
-# #### Get redundancy dataframe for a set of CAMEOS runs
+# ### Get redundancy dataframe for a set of CAMEOS runs
 def get_redundancy(datasets: RunsSet,
                    protA: str,
                    protB: str,
@@ -136,7 +136,7 @@ def get_redundancy(datasets: RunsSet,
     return(redundancy)
 
 
-# #### Interactive plot for CAMEOS results extracted with outparser.jl
+# ### Interactive plot for CAMEOS results extracted with outparser.jl
 def general_iplot(datasets: RunsSet,
                   protA: str,
                   protB: str,
@@ -384,7 +384,7 @@ def general_iplot(datasets: RunsSet,
         py.plot(pyfig, filename=fout, auto_open=auto_open)
 
 
-# #### Interactive plot for redundancy/multiplicity analysis
+# ### Interactive plot for redundancy/multiplicity analysis
 def redundancy_iplot(redundancy: pd.DataFrame,
                      protA: str,
                      protB: str,
@@ -521,8 +521,6 @@ def redundancy_iplot(redundancy: pd.DataFrame,
 
 # ## Sample variants for experimental validation
 # ### Sampling criterium: Pareto's front
-
-
 def sample_pareto_front(dset: pd.DataFrame,
                         protA: str,
                         protB: str,
