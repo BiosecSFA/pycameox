@@ -27,7 +27,7 @@ import time
 from typing import Optional
 
 from pycameox import __version__, __author__, __date__
-from pycameox.config import LICENSE
+from pycameox.config import LICENSE, HHFILTER
 from pycameox.upstream import post_msa, reformat_msa
 
 
@@ -35,8 +35,8 @@ def configure_parser():
     """Argument Parser Configuration"""
     parser = argparse.ArgumentParser(
         description="Postprocess (filter) HMMER alignments",
-        epilog=f'%(prog)s - Release {__version__} - {__date__}' + LICENSE,
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        epilog=f'%(prog)s - Release {__version__} - {__date__} --- ' + LICENSE,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
     parser.add_argument("-V", "--version", action="version",
             version=f"%(prog)s version {__version__} released in {__date__}"
@@ -45,14 +45,15 @@ def configure_parser():
                         help="Name of the protein")
     parser.add_argument("work_dir", type=Path,
                         help="Path to the working directory")
-    parser.add_argument("--hhfilter", type=Path, default='',
+    parser.add_argument("--hhfilter", type=Path,
+                        default=(HHFILTER if HHFILTER.is_file() else None),
                         help="Path to the hhfilter binary")
     parser.add_argument("--fmt", choices=["stockholm", "fasta", "a3m"],
                         default="stockholm", help="Alignment format")
     parser.add_argument("--no_met_start", dest="met_start",
                         action="store_false",
                         help="Disable replacing initial gap with M(ethionine)")
-    parser.add_argument("--seqid_filter", type=Optional[int], default=None,
+    parser.add_argument("--seqid_filter", type=int, default=None,
                         help="Seq id threshold for max pairwise id [0-100]")
     parser.add_argument("--min_seq_cov", type=int, default=50,
                         help="Minimum sequence coverage")
@@ -80,25 +81,25 @@ def main():
     argparser = configure_parser()
     args = argparser.parse_args()
 
-    for fmt in ['stockholm', 'fasta', 'a3m']:
-        try:
-            post_msa( 
-                args.protein,
-                args.work_dir,
-                hhfilter=args.hhfilter,
-                fmt=args.fmt,
-                met_start=args.met_start,
-                seqid_filter=args.seqid_filter,
-                min_seq_cov=args.min_seq_cov,
-                min_col_cov=args.min_col_cov,
-                num_eff_seqs=args.num_eff_seqs,
-                theta=args.theta
-            )
-        except FileNotFoundError:
-            pass
-        else:
-            print(f'\tDone with alignment in {fmt} format for {args.protein}!')
-            break
+    if args.seqid_filter is not None:
+        if args.hhfilter is None:
+            raise ValueError("hhfilter argument is needed but missing")
+        elif not args.hhfilter.is_file():
+            raise ValueError(f"hhfilter binary missing at {args.hhfilter}")
+
+    post_msa( 
+        args.protein,
+        args.work_dir,
+        hhfilter=args.hhfilter,
+        srcfmt=args.fmt,
+        met_start=args.met_start,
+        seqid_filter=args.seqid_filter,
+        min_seq_cov=args.min_seq_cov,
+        min_col_cov=args.min_col_cov,
+        num_eff_seqs=args.num_eff_seqs,
+        theta=args.theta
+    )
+    print(f'\tDone with alignment in {args.fmt} format for {args.protein}!')
 
     # Change evcouplings .a2m extension to .a3m
     prot_path = Path(args.work_dir, args.protein)
@@ -109,7 +110,7 @@ def main():
     # Check that the WT is the 1st seq of the alignment
     with open(a3m_file, 'r') as f:
         first_two_lines = f.readlines()[:2]
-    print("INFO: 1st seq of the alignment is...\n","".join(first_two_lines))
+    print("INFO: 1st line of 1st seq of MSA is...\n","".join(first_two_lines))
 
     # Reformat alignment
     try:

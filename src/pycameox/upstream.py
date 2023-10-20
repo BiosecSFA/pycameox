@@ -31,40 +31,26 @@ from evcouplings.align.protocol import modify_alignment, cut_sequence
 
 # ## Special functions
 
-# ### reformat_MSA
-def reformat_MSA(protein: str, srcfmt='a3m', tgtfmt='fasta') -> None:
-    """Convert MSA format from source to target"""
-    
-    src_path = Path(protein, protein).with_suffix('.' + srcfmt)
-    tgt_path = Path(protein, protein).with_suffix('.' + tgtfmt)
-
-    with open(src_path) as src, open(tgt_path, 'w') as tgt:
-        alig = Alignment.from_file(src, srcfmt)
-        print(f'INFO: Input MSA has {alig.N} sequences and {alig.L} columns')
-        alig.write(tgt, format=tgtfmt, width=sys.maxsize)  # No width limit (for fasta)
-        print(f'Convert {src_path} --> {tgt_path} OK!')
-
-
 # ### postMSA
 def post_msa(
     protein: str, work_dir: PosixPath, hhfilter: PosixPath = '',
-    fmt: str = 'stockholm', met_start: bool = True,
+    srcfmt: str = 'stockholm', met_start: bool = True,
     seqid_filter: Optional[int] = None,
     min_seq_cov: int = 50, min_col_cov: int = 50,
     num_eff_seqs: bool = False, theta: float = 0.8
     ):
     """Postprocess (filter) HMMER alignments"""
 
-    target_fname: PosixPath = Path(work_dir, f'{protein}.fa')
+    target_fname: PosixPath = Path(work_dir, f'{protein}.refseq.fa')
     msa_ext: str
-    if fmt == 'stockholm':
+    if srcfmt == 'stockholm':
         msa_ext = '.sto'
-    elif fmt == 'fasta':
+    elif srcfmt == 'fasta':
         msa_ext = '.fasta'
-    elif fmt == 'a3m':
+    elif srcfmt == 'a3m':
         msa_ext = '.a3m'
     else:
-        raise ValueError(f'Unknown format "{fmt}"!')
+        raise ValueError(f'Unknown format "{srcfmt}"!')
 
     msa_fname: PosixPath = Path(work_dir, protein).with_suffix(msa_ext)
     output_prefix: PosixPath = Path(work_dir, protein)
@@ -74,7 +60,7 @@ def post_msa(
 
     # Get raw alignment from stockholm file
     with open(msa_fname) as fsto:
-        ali_raw = Alignment.from_file(fsto, fmt)
+        ali_raw = Alignment.from_file(fsto, srcfmt)
     # Force M always in the 1st column if present in the WT
     if met_start and tgseq.seq[0] == 'M':
         ali_raw = ali_raw.replace('-', 'M', columns=[0])
@@ -85,7 +71,7 @@ def post_msa(
     focus_cols = np.array([c != "-" for c in ali_raw[0]])
     focus_ali = ali_raw.select(columns=focus_cols)
 
-    if fmt == 'stockholm':
+    if srcfmt == 'stockholm':
         assert len(tgseq.seq) == len(focus_ali[0]), (
             f'{len(focus_cols)} focus cols, expected {len(tgseq.seq)}')
     else:
@@ -98,8 +84,9 @@ def post_msa(
     kwargs = {
         'prefix': str(output_prefix),
         'seqid_filter': seqid_filter,
-        # 'seqid_filter' corresponds to "threshold" in run_hhfilter (default: 95): Sequence identity
-        #  threshold for maximum pairwise identity (between 0 and 100)
+        # 'seqid_filter' corresponds to "threshold" in run_hhfilter (default: 95 or None):
+        #   Sequence identity threshold for maximum pairwise identity (between 0 and 100)
+        #   but if it is None, hhfilter won't be called at all!
         'hhfilter': str(hhfilter),
         # 'hhfilter' corresponds to "binary" in run_hhfilter: Path to hhfilter binary
         # Use integer in [0, 100] or real in [0.0, 1.0] (Chloe: 50; test: 98)

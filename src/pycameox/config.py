@@ -35,9 +35,5 @@ Seq = NewType('Seq', str)
 RunsSet = NewType('RunsSet', Dict[str, pd.DataFrame])
 SampleSet = NewType('Sample', Dict[str, pd.DataFrame])
 
-
-
-
-
-
-
+# ### Constants
+HHFILTER:Path = Path('/usr/local/bin/hhfilter')
