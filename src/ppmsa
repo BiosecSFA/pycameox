@@ -86,6 +86,9 @@ def main():
             raise ValueError("hhfilter argument is needed but missing")
         elif not args.hhfilter.is_file():
             raise ValueError(f"hhfilter binary missing at {args.hhfilter}")
+        else:
+            print("INFO: EVcouplings filtering step will call hhfilter at", 
+                  args.hhfilter)
 
     post_msa( 
         args.protein,
