@@ -6,12 +6,13 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name='pycameox',
-    version='0.1.3',
+    version='0.2.2',
     author='Jose Manuel Martí',
     author_email='martimartine1@llnl.gov',
     description='Python library for Gentangle-CAMEOX (CAMEOs eXtended)',
     long_description=long_description,
     long_description_content_type='text/markdown',
+    license='AGPL-3.0',
     url='https://github.com/BiosecSFA/pycameox',
     project_urls={
         'Bug Tracker': 'https://github.com/BiosecSFA/pycameox/issues',
