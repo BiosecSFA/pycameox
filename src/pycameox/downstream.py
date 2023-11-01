@@ -714,7 +714,7 @@ def search_overdensities(H: np.ndarray,
     H_std: float = H_ma.std()
     desired_features: int = overdensities
     results: List[Dict[str, Any]] = []
-    # Call to the minimizator
+    # Call to the minimizer
     res = scipy.optimize.minimize_scalar(
         inv_avg_pdist_com, bounds=(0, 5), method='bounded',
         options={'disp': (3 if verbose else 0)},
@@ -803,8 +803,7 @@ def sample_overdensities(dset: pd.DataFrame,
     print("Number of different CAMEOX solutions for this "
           f"{'entanglement' if erp is None else 'ERP'}: {len(dset)}")
 
-    # Limit with iloc was needed to avoid not enough memory before rolling
-    # update TOSS-3.7-17 on mammoth
+    # Limit with iloc may be needed to avoid not enough memory in some systems
     nrpsls = dset[[pslsA, pslsB]]  # .iloc[:50000]
 
     H, xedges, yedges = np.histogram2d(

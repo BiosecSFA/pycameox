@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name='pycameox',
-    version='0.2.2',
+    version='0.3.0',
     author='Jose Manuel Martí',
     author_email='martimartine1@llnl.gov',
     description='Python library for Gentangle-CAMEOX (CAMEOs eXtended)',
@@ -18,7 +18,7 @@ setuptools.setup(
         'Bug Tracker': 'https://github.com/BiosecSFA/pycameox/issues',
         },
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         'Framework :: IPython',
         'Framework :: Jupyter',
         'Intended Audience :: Science/Research',
@@ -29,6 +29,7 @@ setuptools.setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
         'Topic :: Scientific/Engineering :: Bio-Informatics',
         ],
     package_dir={"": "src"},

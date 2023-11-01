@@ -16,7 +16,7 @@ ___
 
 If you use pyCAMEOX in your research, please cite the following papers. Thanks!
 
-Allen JE, _et al._ **GENTANGLE: integrated computational design of gene entanglements**. _In preparation_. 2022. 
+Marti JM, _et al._ **GENTANGLE: integrated computational design of gene entanglements**. _In preparation_. 2023. 
 
 Blazejewski T, Ho HI, Wang HH. **Synthetic sequence entanglement augments stability and containment of genetic information in cells**. _Science_. 2019 Aug 9;365(6453):595-8. https://doi.org/10.1126/science.aav5477
 ___
