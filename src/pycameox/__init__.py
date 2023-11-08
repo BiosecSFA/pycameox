@@ -11,9 +11,9 @@ __author__ = 'Jose Manuel Martí'
 __copyright__ = 'Copyright (C) 2022, 2023, Jose Manuel Martí (LLNL)'
 __license__ = 'AGPLv3'
 __maintainer__ = 'Jose Manuel Martí'
-__status__ = 'Alpha'
+__status__ = 'Beta'
 __date__ = 'Nov 2023'
-__version__ = '0.3.0'
+__version__ = '0.4.0'
 
 import sys
 

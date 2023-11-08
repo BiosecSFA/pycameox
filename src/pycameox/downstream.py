@@ -3,6 +3,7 @@
 # ## Initialization
 # ### Dependencies
 from collections import Counter
+import decimal as dec
 import difflib
 import re
 import typing
@@ -40,6 +41,7 @@ def get_redundancy(datasets: RunsSet,
      samples where it appears twice or more times.
      - Column 'spread' is the fraction of datasets (CAMEOX runs) where the
      variant appears twice or more times.
+     - IMPORTANT: Also generates columns for similarity ratios and ERP 
     """
 
     def vprint(*arguments, **kargs) -> None:
@@ -122,13 +124,17 @@ def get_redundancy(datasets: RunsSet,
     redundancy[f'ratio_{protB}'] = ratios_B
 
     # Calculate ERP
+    max_len_full_seq: int = redundancy['full_seq'].str.len().max()
+    erp_dec_exp: dec.Decimal = dec.Decimal('0.0001' if max_len_full_seq >= 1000 else '0.001')
+    print(f'INFO: maximum sequence length is {max_len_full_seq} nt, so ERPs will have {erp_dec_exp} as decimal exp.')
     renucl = re.compile('A|T|C|G')
     vprint('Finally, calculating entanglement relative position...')
     erp: pd.Series
     try:
         erp = redundancy['full_seq'].apply(
-            lambda fullseq: round(
-                (renucl.search(fullseq).start() / len(fullseq)), 3))
+            lambda fullseq: dec.Decimal(
+                renucl.search(fullseq).start() / len(fullseq)
+                ).quantize(erp_dec_exp))
         redundancy['ERP'] = erp
     except AttributeError:
         raise
