@@ -13,7 +13,7 @@ __license__ = 'AGPLv3'
 __maintainer__ = 'Jose Manuel Martí'
 __status__ = 'Beta'
 __date__ = 'Nov 2023'
-__version__ = '0.4.0'
+__version__ = '0.4.1'
 
 import sys
 

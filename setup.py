@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name='pycameox',
-    version='0.4.0',
+    version='0.4.1',
     author='Jose Manuel Martí',
     author_email='martimartine1@llnl.gov',
     description='Python library for Gentangle-CAMEOX (CAMEOs eXtended)',
