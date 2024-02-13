@@ -39,7 +39,7 @@ def load_codon_to_aa():
     hidden = 100
     codon_to_aa_model = nn.Sequential(nn.Linear(12, hidden), nn.ReLU(),
                                       nn.Linear(hidden, hidden), nn.ReLU(),
-                                      nn.Linear(hidden, 21))
+                                      nn.Linear(hidden, 22))
     model_weights_fn = Path(
         __file__).parent.parent.parent / 'models' / 'codon_to_aa_model.pt'
 
@@ -84,7 +84,8 @@ def load_ccmpred(ccmpred_fn):
             break
 
     h = torch.tensor(-h, dtype=torch.float64)
-    W = torch.tensor(-W * 2, dtype=torch.float64)
+    #W = torch.tensor(-W / 2, dtype=torch.float64)
+    W = torch.tensor(-W, dtype=torch.float64)
     model = Potts(h=h, W=W.transpose(1, 2).reshape((L * 21, L * 21)))
     return model
 
@@ -101,7 +102,7 @@ class NucGapHelper():
 
     def add_gaps(self, design):
         bs = design.shape[0]
-        X = torch.zeros(bs, self.L, 21, device=self.device)
+        X = torch.zeros(bs, self.L, 22, device=self.device)
         X[..., self.gap_idx] = 1
         X[:, self.non_gap_indices, :] = design
         return X
@@ -240,14 +241,14 @@ def get_pll_scores(nts_oh, sampler, model_large, model_small):
     with torch.no_grad():
         aas_large = sampler.nt_to_aas(nts_oh, sampler.nuc_gap_helper_large)
         # energies_large = model_large(aas_large)
-        plls_large = model_large.pseudolikelihood(aas_large)
+        plls_large = model_large.pseudolikelihood(aas_large[:, :, :21])
 
         nts_oh_small = nts_oh[:, sampler.smaller_gene_start:sampler.
                               smaller_gene_end, :]
         aas_small = sampler.nt_to_aas(nts_oh_small[:, :-3, :],
                                       sampler.nuc_gap_helper_small)
         # energies_small = model_small(aas_small)
-        plls_small = model_small.pseudolikelihood(aas_small)
+        plls_small = model_small.pseudolikelihood(aas_small[:, :, :21])
     return plls_large, plls_small
 
 
@@ -284,7 +285,7 @@ def optimize_ent_nuc(nts_oh,
         plls_small = model_small.pseudolikelihood(aas_small)
 
     idxs = torch.argsort(-((large_wt * plls_large) +
-                           (small_wt + plls_small)))[:to_keep]
+                           (small_wt * plls_small)))[:to_keep]
     nts_oh = nts_oh[idxs].repeat(bs // len(idxs), 1, 1)
 
     # anneal again
@@ -314,3 +315,312 @@ def check_constraints(nts_oh, sampler, codon_table):
     last_codons = [''.join([I_TO_BASE[i] for i in c]) for c in last_codons_oh]
     for c in last_codons:
         assert codon_table[c] == "*"
+    import ipdb
+    ipdb.set_trace()
+
+
+class EntCodGWGSampler(GWGCategoricalSampler):
+
+    def __init__(self,
+                 bs,
+                 device,
+                 codon_to_aa_model,
+                 ent_codon_seq,
+                 ent_nt_seq,
+                 nuc_gap_helper_large,
+                 nuc_gap_helper_small,
+                 codon_table,
+                 codon_to_bases_emb,
+                 offset=1,
+                 codon_idx_fix=None,
+                 large_wt=0.5,
+                 small_wt=0.5):
+        super().__init__(bs, 0, 0, device)
+        self.codon_to_bases_emb = codon_to_bases_emb
+        uppercase_idxs = [
+            i for i, nt in enumerate(ent_nt_seq) if nt == nt.upper()
+        ]
+        self.smaller_gene_start = uppercase_idxs[offset]
+        self.smaller_gene_end = uppercase_idxs[-1] + 1
+        nts_smaller = ent_nt_seq[self.smaller_gene_start:self.smaller_gene_end]
+        num_nts_smaller = len(nts_smaller)
+        assert num_nts_smaller % 3 == 0
+
+        self.codon_to_aa_model = codon_to_aa_model
+        self.nuc_gap_helper_large = nuc_gap_helper_large
+        self.nuc_gap_helper_small = nuc_gap_helper_small
+        self.temp = 1.0
+        self.large_wt = large_wt
+        self.small_wt = small_wt
+
+        stop_codons = [c for c, aa in codon_table.items() if aa == "*"]
+        stop_codons_enc = torch.tensor([[BASE_TO_I[b] for b in codon]
+                                        for codon in stop_codons])
+        stop_codons_oh = torch.nn.functional.one_hot(
+            stop_codons_enc,
+            num_classes=4).to(torch.float).reshape(-1, 12).to(device)
+        self.stop_codons_oh = stop_codons_oh
+
+        constrain_mask = torch.zeros(len(ent_codon_seq), dtype=torch.bool)
+        if not (codon_idx_fix is None):
+            constrain_mask[codon_idx_fix] = True
+        self.constrain_mask = constrain_mask.unsqueeze(1).unsqueeze(0).repeat(
+            bs, 1, 64).to(device)
+
+    def nt_to_aas(self, nts, nuc_gap_helper):
+        bs = nts.shape[0]
+        codons = nts.reshape((bs, -1, 12))
+        aas = self.codon_to_aa_model(codons)
+        aas_with_gaps = nuc_gap_helper.add_gaps(aas)
+        return aas_with_gaps
+
+    def compute_neg_energy_and_proposal(self, codons, model):
+        model_large, model_small = model
+        codons.requires_grad_()
+        batch, num_codons, _ = codons.shape
+        nts = torch.einsum('bci,ij', codons, self.codon_to_bases_emb).reshape(
+            batch, num_codons * 3, 4)
+        aas_with_gaps_large = self.nt_to_aas(nts, self.nuc_gap_helper_large)
+        if False:
+            energies_large = model_large(aas_with_gaps_large)
+        plls_large = model_large.pseudolikelihood(aas_with_gaps_large)
+        nts_small = nts[:, self.smaller_gene_start:self.smaller_gene_end, :]
+        stop_codon = nts_small[:, -3:, :]  # last codon is stop
+        penalty = -torch.prod(torch.abs(
+            self.stop_codons_oh @ stop_codon.reshape(-1, 12).T - 3.0),
+                              dim=0) * 1000
+
+        aas_with_gaps_small = self.nt_to_aas(nts_small[:, :-3, :],
+                                             self.nuc_gap_helper_small)
+        if False:
+            energies_small = model_small(aas_with_gaps_small)
+        plls_small = model_small.pseudolikelihood(aas_with_gaps_small)
+        if False:
+            f_x = (((-energies_large * self.large_wt) +
+                    (-energies_small * self.small_wt)) / self.temp) + penalty
+        else:
+            f_x = (((plls_large * self.large_wt) +
+                    (plls_small * self.small_wt)) / self.temp) + penalty
+        grad_f_x = torch.autograd.grad(f_x.sum(), codons, retain_graph=True)[0]
+        with torch.no_grad():
+            d_tilde = (grad_f_x -
+                       (codons * grad_f_x).sum(dim=-1).unsqueeze(dim=-1))
+            d_tilde -= (self.constrain_mask.to(torch.float) * 1000)
+
+        probs = torch.softmax(d_tilde.reshape(d_tilde.shape[0], -1) / 2,
+                              dim=-1)
+
+        #dist = OneHotCategorical(logits=d_tilde.reshape(d_tilde.shape[0], -1) / 2)
+        dist = OneHotCategorical(probs=probs)
+        return f_x, dist
+
+
+def get_best_codons(codons_oh, sampler, model_large, model_small, large_wt,
+                    small_wt, codon_to_bases_emb):
+    batch, num_codons, _ = codons_oh.shape
+    nts_oh = torch.einsum('bci,ij', codons_oh,
+                          codon_to_bases_emb).reshape(batch, num_codons * 3, 4)
+    with torch.no_grad():
+        aas_large = sampler.nt_to_aas(nts_oh, sampler.nuc_gap_helper_large)
+        aas_large = torch.round(aas_large)
+        #energies_large = model_large(aas_large)
+        plls_large = model_large.pseudolikelihood(aas_large)
+
+        nts_oh_small = nts_oh[:, sampler.smaller_gene_start:sampler.
+                              smaller_gene_end, :]
+        aas_small = sampler.nt_to_aas(nts_oh_small[:, :-3, :],
+                                      sampler.nuc_gap_helper_small)
+        #energies_small = model_small(aas_small)
+        aas_small = torch.round(aas_small)
+        plls_small = model_small.pseudolikelihood(aas_small)
+
+    idx = torch.argsort(-((large_wt * plls_large) +
+                          (small_wt * plls_small)))[0]
+    best = codons_oh[idx]
+    best_score = ((large_wt * plls_large) + (small_wt * plls_small))[idx]
+    return best, best_score
+
+
+def get_top_codons(codons_oh,
+                   sampler,
+                   model_large,
+                   model_small,
+                   large_wt,
+                   small_wt,
+                   codon_to_bases_emb,
+                   num=10):
+    batch, num_codons, _ = codons_oh.shape
+    nts_oh = torch.einsum('bci,ij', codons_oh,
+                          codon_to_bases_emb).reshape(batch, num_codons * 3, 4)
+    with torch.no_grad():
+        aas_large = sampler.nt_to_aas(nts_oh, sampler.nuc_gap_helper_large)
+        aas_large = torch.round(aas_large)
+        #energies_large = model_large(aas_large)
+        plls_large = model_large.pseudolikelihood(aas_large)
+
+        nts_oh_small = nts_oh[:, sampler.smaller_gene_start:sampler.
+                              smaller_gene_end, :]
+        aas_small = sampler.nt_to_aas(nts_oh_small[:, :-3, :],
+                                      sampler.nuc_gap_helper_small)
+        #energies_small = model_small(aas_small)
+        aas_small = torch.round(aas_small)
+        plls_small = model_small.pseudolikelihood(aas_small)
+
+    idx = torch.argsort(-((large_wt * plls_large) +
+                          (small_wt * plls_small)))[:num]
+    best = codons_oh[idx]
+    return best
+
+
+class EntDoubleCodGWGSampler(GWGCategoricalSampler):
+
+    def __init__(self,
+                 bs,
+                 device,
+                 codon_to_aa_model,
+                 ent_codon_seq,
+                 ent_nt_seq,
+                 nuc_gap_helper_large,
+                 nuc_gap_helper_small,
+                 codon_table,
+                 double_codon_to_bases_emb,
+                 offset=1,
+                 codon_idx_fix=None,
+                 large_wt=0.5,
+                 small_wt=0.5):
+        super().__init__(bs, 0, 0, device)
+        self.codon_to_bases_emb = double_codon_to_bases_emb
+        uppercase_idxs = [
+            i for i, nt in enumerate(ent_nt_seq) if nt == nt.upper()
+        ]
+        self.smaller_gene_start = uppercase_idxs[offset]
+        self.smaller_gene_end = uppercase_idxs[-1] + 1
+        nts_smaller = ent_nt_seq[self.smaller_gene_start:self.smaller_gene_end]
+        num_nts_smaller = len(nts_smaller)
+        assert num_nts_smaller % 3 == 0
+
+        self.codon_to_aa_model = codon_to_aa_model
+        self.nuc_gap_helper_large = nuc_gap_helper_large
+        self.nuc_gap_helper_small = nuc_gap_helper_small
+        self.temp = 1.0
+        self.large_wt = large_wt
+        self.small_wt = small_wt
+
+        stop_codons = [c for c, aa in codon_table.items() if aa == "*"]
+        stop_codons_enc = torch.tensor([[BASE_TO_I[b] for b in codon]
+                                        for codon in stop_codons])
+        stop_codons_oh = torch.nn.functional.one_hot(
+            stop_codons_enc,
+            num_classes=4).to(torch.float).reshape(-1, 12).to(device)
+        self.stop_codons_oh = stop_codons_oh
+
+        constrain_mask = torch.zeros(len(ent_codon_seq), dtype=torch.bool)
+        if not (codon_idx_fix is None):
+            constrain_mask[codon_idx_fix] = True
+        self.constrain_mask = constrain_mask.unsqueeze(1).unsqueeze(0).repeat(
+            1, 1, 64**2).to(device)
+
+    def nt_to_aas(self, nts, nuc_gap_helper):
+        bs = nts.shape[0]
+        codons = nts.reshape((bs, -1, 12))
+        aas = self.codon_to_aa_model(codons)
+        aas_with_gaps = nuc_gap_helper.add_gaps(aas)
+        return aas_with_gaps
+
+    def compute_neg_energy_and_proposal(self, codons, model):
+        model_large, model_small = model
+        codons.requires_grad_()
+        batch, num_codons, _ = codons.shape
+        nts = torch.einsum('bci,ij', codons, self.codon_to_bases_emb).reshape(
+            batch, num_codons * 6, 4)
+        aas_with_gaps_large = self.nt_to_aas(nts, self.nuc_gap_helper_large)
+        if False:
+            energies_large = model_large(aas_with_gaps_large)
+        plls_large = model_large.pseudolikelihood(aas_with_gaps_large)
+        nts_small = nts[:, self.smaller_gene_start:self.smaller_gene_end, :]
+        stop_codon = nts_small[:, -3:, :]  # last codon is stop
+        penalty = -torch.prod(torch.abs(
+            self.stop_codons_oh @ stop_codon.reshape(-1, 12).T - 3.0),
+                              dim=0) * 1000
+
+        aas_with_gaps_small = self.nt_to_aas(nts_small[:, :-3, :],
+                                             self.nuc_gap_helper_small)
+        if False:
+            energies_small = model_small(aas_with_gaps_small)
+        plls_small = model_small.pseudolikelihood(aas_with_gaps_small)
+        if False:
+            f_x = (((-energies_large * self.large_wt) +
+                    (-energies_small * self.small_wt)) / self.temp) + penalty
+        else:
+            f_x = (((plls_large * self.large_wt) +
+                    (plls_small * self.small_wt)) / self.temp) + penalty
+        grad_f_x = torch.autograd.grad(f_x.sum(), codons, retain_graph=True)[0]
+        with torch.no_grad():
+            d_tilde = (grad_f_x -
+                       (codons * grad_f_x).sum(dim=-1).unsqueeze(dim=-1))
+
+            d_tilde -= (self.constrain_mask.to(torch.float) * 1000)
+
+        probs = torch.softmax(d_tilde.reshape(d_tilde.shape[0], -1) / 2,
+                              dim=-1)
+
+        #dist = OneHotCategorical(logits=d_tilde.reshape(d_tilde.shape[0], -1) / 2)
+        dist = OneHotCategorical(probs=probs)
+        return f_x, dist
+
+
+def get_best_double_codons(codons_oh, sampler, model_large, model_small,
+                           large_wt, small_wt, codon_to_bases_emb):
+    batch, num_codons, _ = codons_oh.shape
+    nts_oh = torch.einsum('bci,ij', codons_oh,
+                          codon_to_bases_emb).reshape(batch, num_codons * 6, 4)
+    with torch.no_grad():
+        aas_large = sampler.nt_to_aas(nts_oh, sampler.nuc_gap_helper_large)
+        aas_large = torch.round(aas_large)
+        #energies_large = model_large(aas_large)
+        plls_large = model_large.pseudolikelihood(aas_large)
+
+        nts_oh_small = nts_oh[:, sampler.smaller_gene_start:sampler.
+                              smaller_gene_end, :]
+        aas_small = sampler.nt_to_aas(nts_oh_small[:, :-3, :],
+                                      sampler.nuc_gap_helper_small)
+        #energies_small = model_small(aas_small)
+        aas_small = torch.round(aas_small)
+        plls_small = model_small.pseudolikelihood(aas_small)
+
+    idx = torch.argsort(-((large_wt * plls_large) +
+                          (small_wt * plls_small)))[0]
+    best = codons_oh[idx]
+    best_score = ((large_wt * plls_large) + (small_wt * plls_small))[idx]
+    return best, best_score
+
+
+def get_top_double_codons(codons_oh,
+                          sampler,
+                          model_large,
+                          model_small,
+                          large_wt,
+                          small_wt,
+                          codon_to_bases_emb,
+                          num=10):
+    batch, num_codons, _ = codons_oh.shape
+    nts_oh = torch.einsum('bci,ij', codons_oh,
+                          codon_to_bases_emb).reshape(batch, num_codons * 6, 4)
+    with torch.no_grad():
+        aas_large = sampler.nt_to_aas(nts_oh, sampler.nuc_gap_helper_large)
+        aas_large = torch.round(aas_large)
+        #energies_large = model_large(aas_large)
+        plls_large = model_large.pseudolikelihood(aas_large)
+
+        nts_oh_small = nts_oh[:, sampler.smaller_gene_start:sampler.
+                              smaller_gene_end, :]
+        aas_small = sampler.nt_to_aas(nts_oh_small[:, :-3, :],
+                                      sampler.nuc_gap_helper_small)
+        #energies_small = model_small(aas_small)
+        aas_small = torch.round(aas_small)
+        plls_small = model_small.pseudolikelihood(aas_small)
+
+    idx = torch.argsort(-((large_wt * plls_large) +
+                          (small_wt * plls_small)))[:num]
+    best = codons_oh[idx]
+    return best

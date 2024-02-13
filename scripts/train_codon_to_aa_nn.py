@@ -1,3 +1,4 @@
+from pycameox.optimization import (AA_TO_I as aa_to_i)
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,17 +17,16 @@ bases = [l.upper() for l in 'tcag']
 codons = [a + b + c for a in bases for b in bases for c in bases]
 amino_acids = 'FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG'
 codon_table = dict(zip(codons, amino_acids))
-
+aa_to_i['*'] = 21
 base_to_i = {base: i for i, base in enumerate("ACGT")}
 i_to_base = {i: base for i, base in enumerate("ACGT")}
 oh_codon_aa_pairs = []
 for codon in codons:
     aa = codon_table[codon]
-    if aa == "*":
-        continue
+    #if aa == "*":
+    #continue
     aa_enc = torch.tensor([aa_to_i[aa]])
-    aa_oh = torch.nn.functional.one_hot(aa_enc, num_classes=len(ALPHABET)).to(
-        torch.float)
+    aa_oh = torch.nn.functional.one_hot(aa_enc, num_classes=22).to(torch.float)
     codon_enc = torch.tensor(
         [base_to_i[codon[0]], base_to_i[codon[1]], base_to_i[codon[2]]])
     codon_oh = torch.nn.functional.one_hot(codon_enc,
@@ -38,7 +38,7 @@ train_ds = TensorDataset(torch.vstack(codons_oh), torch.vstack(aas_oh))
 hidden = 100
 codon_to_aa_model = nn.Sequential(nn.Linear(12, hidden), nn.ReLU(),
                                   nn.Linear(hidden, hidden), nn.ReLU(),
-                                  nn.Linear(hidden, 21))
+                                  nn.Linear(hidden, 22))
 
 codon_to_aa_model.train()
 '''

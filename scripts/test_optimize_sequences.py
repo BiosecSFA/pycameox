@@ -122,7 +122,7 @@ if __name__ == "__main__":
         plls_large_before, plls_small_before = plls_large_before.item(
         ), plls_small_before.item()
         score_before = ((large_wt * plls_large_before) +
-                        (small_wt + plls_small_before))
+                        (small_wt * plls_small_before))
         #print(f"Score: {score_before}", )
 
         nts_oh = optimize_ent_nuc(nts_oh.repeat((bs, 1, 1)),
@@ -136,12 +136,12 @@ if __name__ == "__main__":
 
         plls_large, plls_small = get_pll_scores(nts_oh, sampler, model_large,
                                                 model_small)
-        idx = torch.argmax((large_wt * plls_large) + (small_wt + plls_small))
+        idx = torch.argmax((large_wt * plls_large) + (small_wt * plls_small))
 
         plls_large_after = plls_large[idx].item()
         plls_small_after = plls_small[idx].item()
         score_after = ((large_wt * plls_large_after) +
-                       (small_wt + plls_small_after))
+                       (small_wt * plls_small_after))
         check_constraints(nts_oh, sampler, codon_table)
 
         optimized_nt = ''.join([
@@ -182,12 +182,12 @@ if __name__ == "__main__":
 
         plls_large, plls_small = get_pll_scores(nts_oh, sampler, model_large,
                                                 model_small)
-        idx = torch.argmax((large_wt * plls_large) + (small_wt + plls_small))
+        idx = torch.argmax((large_wt * plls_large) + (small_wt * plls_small))
 
         plls_large_after_unc = plls_large[idx].item()
         plls_small_after_unc = plls_small[idx].item()
         score_after_unc = ((large_wt * plls_large_after_unc) +
-                           (small_wt + plls_small_after_unc))
+                           (small_wt * plls_small_after_unc))
         check_constraints(nts_oh, sampler, codon_table)
 
         optimized_nt_unc = ''.join([
@@ -200,6 +200,9 @@ if __name__ == "__main__":
         ])
 
         #print(f"Score: {score_after}")
+        print(
+            f"Score Before: {score_before:.3f}    Score After: {score_after:.3f}    Score After Unc: {score_after_unc:.3f}",
+        )
         pbar.set_description(
             f"Score Before: {score_before:.3f}    Score After: {score_after:.3f}    Score After Unc: {score_after_unc:.3f}",
             refresh=True)
