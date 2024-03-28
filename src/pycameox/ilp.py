@@ -134,7 +134,8 @@ def add_codon_model_constraints(model_codon, codons_with_gaps, codon_table, add_
     return model_with_constraints
 
 
-def amino_potts_to_codon_potts_with_stop(model, codon_table):
+def amino_potts_to_codon_potts_with_stop(model, codon_table, has_gaps=True):
+    aa_to_i = AA_TO_I
     codons, aas = map(list, zip(*codon_table.items()))
     codon_to_aa = {c:a for c, a in zip(codons, aas)}
     codon_to_i = { c:i for i,c in enumerate(codons + ['XXX']) }
@@ -144,8 +145,9 @@ def amino_potts_to_codon_potts_with_stop(model, codon_table):
     W = model.reshape_to_L_L_A_A().detach().cpu().numpy()
 
 
-    codon_h = np.zeros((model.L+1, 65))
-    codon_W = np.zeros((model.L+1, model.L+1, 65, 65))
+    A = 65 if has_gaps else 64
+    codon_h = np.zeros((model.L+1, A))
+    codon_W = np.zeros((model.L+1, model.L+1, A, A))
     for pos in range(model.L):
         for codon_idx, codon in enumerate(codons):
             aa = codon_to_aa[codon]
@@ -153,7 +155,8 @@ def amino_potts_to_codon_potts_with_stop(model, codon_table):
                 codon_h[pos, codon_idx] = 10000
             else:
                 codon_h[pos, codon_idx] = h[pos, aa_to_i[aa]]
-        codon_h[pos, -1] = h[pos, aa_to_i['-']]
+        if has_gaps:
+            codon_h[pos, -1] = h[pos, aa_to_i['-']]
 
 
     for pos_i in tqdm(range(model.L-1)):
@@ -169,29 +172,31 @@ def amino_potts_to_codon_potts_with_stop(model, codon_table):
                     aa_idx_j = aa_to_i[aa_j]
                     codon_W[pos_i, pos_j, codon_idx_i, codon_idx_j] = W[pos_i, pos_j, aa_idx_i, aa_idx_j]
                     codon_W[pos_j, pos_i, codon_idx_j, codon_idx_i] = W[pos_j, pos_i, aa_idx_j, aa_idx_i]
-            for codon_idx_i, codon_i in enumerate(codons):
-                aa_i = codon_to_aa[codon_i]
-                if aa_i == "*":
-                    continue
-                aa_idx_i = aa_to_i[aa_i]
+            if has_gaps:
+                for codon_idx_i, codon_i in enumerate(codons):
+                    aa_i = codon_to_aa[codon_i]
+                    if aa_i == "*":
+                        continue
+                    aa_idx_i = aa_to_i[aa_i]
+                    aa_idx_j = aa_to_i['-']
+                    codon_W[pos_i, pos_j, codon_idx_i, -1] = W[pos_i, pos_j, aa_idx_i, aa_idx_j]
+                    codon_W[pos_i, pos_j, -1, codon_idx_i] = W[pos_i, pos_j, aa_idx_j, aa_idx_i]
+
+                    codon_W[pos_j, pos_i, -1, codon_idx_i] = W[pos_j, pos_i, aa_idx_j, aa_idx_i]
+                    codon_W[pos_j, pos_i, codon_idx_i, -1] = W[pos_j, pos_i, aa_idx_i, aa_idx_j]
+
+                aa_idx_i = aa_to_i['-']
                 aa_idx_j = aa_to_i['-']
-                codon_W[pos_i, pos_j, codon_idx_i, -1] = W[pos_i, pos_j, aa_idx_i, aa_idx_j]
-                codon_W[pos_i, pos_j, -1, codon_idx_i] = W[pos_i, pos_j, aa_idx_j, aa_idx_i]
-
-                codon_W[pos_j, pos_i, -1, codon_idx_i] = W[pos_j, pos_i, aa_idx_j, aa_idx_i]
-                codon_W[pos_j, pos_i, codon_idx_i, -1] = W[pos_j, pos_i, aa_idx_i, aa_idx_j]
-
-            aa_idx_i = aa_to_i['-']
-            aa_idx_j = aa_to_i['-']
-            codon_W[pos_j, pos_i, -1, -1] = W[pos_j, pos_i, aa_idx_j, aa_idx_i]
-            codon_W[pos_i, pos_j, -1, -1] = W[pos_i, pos_j, aa_idx_j, aa_idx_i]
+                codon_W[pos_j, pos_i, -1, -1] = W[pos_j, pos_i, aa_idx_j, aa_idx_i]
+                codon_W[pos_i, pos_j, -1, -1] = W[pos_i, pos_j, aa_idx_j, aa_idx_i]
 
 
-    new_model = Potts(h=torch.tensor(codon_h), W=torch.tensor(codon_W ).transpose(2,1).reshape((model.L+1)*65, (model.L+1)*65))
+    new_model = Potts(h=torch.tensor(codon_h), W=torch.tensor(codon_W ).transpose(2,1).reshape((model.L+1)*A, (model.L+1)*A))
     return new_model
 
 
-def amino_potts_to_codon_potts(model, codon_table):
+def amino_potts_to_codon_potts(model, codon_table, has_gaps=True):
+    aa_to_i = AA_TO_I
     codons, aas = map(list, zip(*codon_table.items()))
     codon_to_aa = {c:a for c, a in zip(codons, aas)}
     codon_to_i = { c:i for i,c in enumerate(codons + ['XXX']) }
@@ -201,8 +206,9 @@ def amino_potts_to_codon_potts(model, codon_table):
     W = model.reshape_to_L_L_A_A().detach().cpu().numpy()
 
 
-    codon_h = np.zeros((model.L, 65))
-    codon_W = np.zeros((model.L, model.L, 65, 65))
+    A = 65 if has_gaps else 64
+    codon_h = np.zeros((model.L, A))
+    codon_W = np.zeros((model.L, model.L, A, A))
     for pos in range(model.L):
         for codon_idx, codon in enumerate(codons):
             aa = codon_to_aa[codon]
@@ -210,7 +216,8 @@ def amino_potts_to_codon_potts(model, codon_table):
                 codon_h[pos, codon_idx] = 10000
             else:
                 codon_h[pos, codon_idx] = h[pos, aa_to_i[aa]]
-        codon_h[pos, -1] = h[pos, aa_to_i['-']]
+        if has_gaps:
+            codon_h[pos, -1] = h[pos, aa_to_i['-']]
 
 
     for pos_i in tqdm(range(model.L-1)):
@@ -226,25 +233,26 @@ def amino_potts_to_codon_potts(model, codon_table):
                     aa_idx_j = aa_to_i[aa_j]
                     codon_W[pos_i, pos_j, codon_idx_i, codon_idx_j] = W[pos_i, pos_j, aa_idx_i, aa_idx_j]
                     codon_W[pos_j, pos_i, codon_idx_j, codon_idx_i] = W[pos_j, pos_i, aa_idx_j, aa_idx_i]
-            for codon_idx_i, codon_i in enumerate(codons):
-                aa_i = codon_to_aa[codon_i]
-                if aa_i == "*":
-                    continue
-                aa_idx_i = aa_to_i[aa_i]
+            if has_gaps:
+                for codon_idx_i, codon_i in enumerate(codons):
+                    aa_i = codon_to_aa[codon_i]
+                    if aa_i == "*":
+                        continue
+                    aa_idx_i = aa_to_i[aa_i]
+                    aa_idx_j = aa_to_i['-']
+                    codon_W[pos_i, pos_j, codon_idx_i, -1] = W[pos_i, pos_j, aa_idx_i, aa_idx_j]
+                    codon_W[pos_i, pos_j, -1, codon_idx_i] = W[pos_i, pos_j, aa_idx_j, aa_idx_i]
+
+                    codon_W[pos_j, pos_i, -1, codon_idx_i] = W[pos_j, pos_i, aa_idx_j, aa_idx_i]
+                    codon_W[pos_j, pos_i, codon_idx_i, -1] = W[pos_j, pos_i, aa_idx_i, aa_idx_j]
+
+                aa_idx_i = aa_to_i['-']
                 aa_idx_j = aa_to_i['-']
-                codon_W[pos_i, pos_j, codon_idx_i, -1] = W[pos_i, pos_j, aa_idx_i, aa_idx_j]
-                codon_W[pos_i, pos_j, -1, codon_idx_i] = W[pos_i, pos_j, aa_idx_j, aa_idx_i]
-
-                codon_W[pos_j, pos_i, -1, codon_idx_i] = W[pos_j, pos_i, aa_idx_j, aa_idx_i]
-                codon_W[pos_j, pos_i, codon_idx_i, -1] = W[pos_j, pos_i, aa_idx_i, aa_idx_j]
-
-            aa_idx_i = aa_to_i['-']
-            aa_idx_j = aa_to_i['-']
-            codon_W[pos_j, pos_i, -1, -1] = W[pos_j, pos_i, aa_idx_j, aa_idx_i]
-            codon_W[pos_i, pos_j, -1, -1] = W[pos_i, pos_j, aa_idx_j, aa_idx_i]
+                codon_W[pos_j, pos_i, -1, -1] = W[pos_j, pos_i, aa_idx_j, aa_idx_i]
+                codon_W[pos_i, pos_j, -1, -1] = W[pos_i, pos_j, aa_idx_j, aa_idx_i]
 
 
-    new_model = Potts(h=torch.tensor(codon_h), W=torch.tensor(codon_W).transpose(2,1).reshape((model.L)*65, (model.L)*65))
+    new_model = Potts(h=torch.tensor(codon_h), W=torch.tensor(codon_W).transpose(2,1).reshape((model.L)*A, (model.L)*A))
     return new_model
 
 
@@ -295,3 +303,5 @@ def get_entangled_idxs(ent_nt_seq, large_codons_with_gaps, small_codons_with_gap
         if small_gene_idx >= len(small_codons_with_gaps):
             break
     return entangled_positions
+
+
